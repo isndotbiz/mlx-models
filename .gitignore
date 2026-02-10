@@ -1,0 +1,37 @@
+# Virtual environment
+.venv/
+venv/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# MLX models (too large for git)
+mlx/*/
+
+# But keep the directory structure
+!mlx/.gitkeep
+
+# Logs
+*.log
+
+# Temporary files
+*.tmp
+*.temp
+
+# OS files
+.DS_Store
+.serena/
+
+# Benchmark results (can regenerate)
+*_results.json
+*_benchmark.json
+
+# Keep documentation and scripts
+!*.md
+!*.py
+!*.sh
+!*.txt

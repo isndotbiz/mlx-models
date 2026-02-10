@@ -1,0 +1,160 @@
+╔══════════════════════════════════════════════════════════════════════╗
+║                   MLX MODELS QUICK REFERENCE CARD                    ║
+║                        M4 Pro (24GB) + MLX                           ║
+╚══════════════════════════════════════════════════════════════════════╝
+
+📁 LOCATION: /Users/jonathanmallinger/models
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🚀 QUICK START
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+cd /Users/jonathanmallinger/models
+source .venv/bin/activate
+python3 test_model.py ./mlx/MODEL_NAME
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📊 YOUR MODELS (10 total, 34GB)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+⚡ FASTEST (300+ t/s):
+  ./mlx/Josiefied-Qwen2.5-0.5B-abliterated        400+ t/s  278MB
+
+🏃 FAST (90+ t/s):
+  ./mlx/Josiefied-Qwen2.5-3B-abliterated          117  t/s  1.7GB ⭐
+  ./mlx/Josiefied-Qwen3-1.7B-abliterated-v1-4bit  92.8 t/s  0.9GB
+  ./mlx/DeepSeek-R1-Distill-Qwen-1.5B-3bit        84.6 t/s  0.7GB
+
+🎯 BALANCED (40-80 t/s):
+  ./mlx/gemma-3-4b-abliterated                    74   t/s  2.6GB
+  ./mlx/Qwen3-4B-4bit                             47.1 t/s  2.0GB
+
+🏋️ QUALITY (warm-up required):
+  ./mlx/mistral-7b                                33.3 t/s  3.8GB
+  ./mlx/Josiefied-Qwen3-8B-abliterated-v1-4bit    21   t/s* 4.3GB
+  ./mlx/WhiteRabbitNeo-2.5-Qwen-2.5-Coder-7B-mlx  5.3  t/s* 4.0GB
+  ./mlx/Josiefied-Qwen3-14B-abliterated-v3-6bit   0.8  t/s* 14GB
+
+*First run slow, 5-10x faster after warmup
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+💻 COMMAND LINE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+# Basic generation
+mlx_lm.generate --model ./mlx/Qwen3-4B-4bit --prompt "Your question"
+
+# With parameters
+mlx_lm.generate \
+  --model ./mlx/MODEL \
+  --prompt "Your question" \
+  --max-tokens 300 \
+  --temp 0.7 \
+  --verbose
+
+# Interactive chat
+mlx_lm.generate --model ./mlx/MODEL --max-tokens 500
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🐍 PYTHON API
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+from mlx_lm import load, generate
+
+# Load model
+model, tokenizer = load("./mlx/Qwen3-4B-4bit")
+
+# Generate
+response = generate(
+    model, tokenizer,
+    prompt="What is SQL injection?",
+    max_tokens=200,
+    temp=0.7,
+    verbose=True
+)
+
+print(response)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🖥️  LM STUDIO
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+1. Open: /Applications/LM Studio.app
+2. Settings → Inference → Engine → "MLX (Apple Silicon GPU)"
+3. Settings → Models → Add: /Users/jonathanmallinger/models/mlx
+4. Load model and chat!
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+⚙️  PARAMETERS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+temp=0.7             # Creativity (0.0-2.0)
+                     # 0.1-0.3: Factual, deterministic
+                     # 0.7-0.9: Balanced (default)
+                     # 1.0-1.5: Creative
+
+top_p=0.9            # Token selection (0.0-1.0)
+                     # Lower = more focused
+
+max_tokens=200       # Output length
+
+repetition_penalty=1.1   # Prevent loops (1.0-2.0)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🎯 MODEL SELECTION
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Need Speed?          → Qwen 0.5B (400+ t/s)
+Need Balance?        → Qwen 3B (117 t/s)
+Need Quality?        → Josiefied-14B
+Security Work?       → WhiteRabbitNeo
+Uncensored?          → Josiefied series
+Different arch?      → Gemma or mistral
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🚀 PERFORMANCE TIPS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+✓ Warm up models (first 5-10 generations compile)
+✓ Load once, use many times
+✓ Use smaller max_tokens for speed
+✓ Close other apps for large models (14B)
+✓ Choose right model for task
+✗ Don't reload model for each query
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🔧 TROUBLESHOOTING
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Slow first run?      → Normal! Compiles on first use. Faster after.
+Out of memory?       → Use smaller model or reduce max_tokens
+Slow generation?     → Warm up model first, close other apps
+Repetitive output?   → Increase repetition_penalty=1.2
+Nonsensical output?  → Lower temp=0.3, improve prompt
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📚 DOCUMENTATION
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Complete guide:       cat RUNNING_MODELS_GUIDE.md
+Model details:        cat VERIFIED_MODELS.md
+Use cases:            cat MODEL_USE_CASES.md
+Quick commands:       cat QUICK_TEST_COMMANDS.md
+This card:            cat QUICK_REFERENCE.txt
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+💡 ONE-LINERS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+# Quick query
+python3 -c "from mlx_lm import load,generate; m,t=load('./mlx/Qwen3-4B-4bit'); print(generate(m,t,prompt='What is XSS?'))"
+
+# Check memory
+python3 -c "import mlx.core as mx; print(f'{mx.metal.get_active_memory()/1024**3:.2f}GB')"
+
+# List models
+ls -lh mlx/
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🎉 You're ready! Pick a model and start generating!
