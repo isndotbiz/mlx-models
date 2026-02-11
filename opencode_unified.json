@@ -1,0 +1,77 @@
+{
+  "_comment": "OpenCode Unified Configuration - Single LM Studio Endpoint",
+  "_version": "2.1",
+  "_updated": "2026-02-11",
+
+  "endpoint": {
+    "url": "http://localhost:1234/v1",
+    "type": "lmstudio-api",
+    "models_available": [
+      "josiefied-qwen3-8b-abliterated-v1",
+      "text-embedding-nomic-embed-text-v2-moe"
+    ]
+  },
+
+  "primary_model": {
+    "name": "josiefied-qwen3-8b-abliterated-v1",
+    "type": "main",
+    "context_window": 8192,
+    "max_tokens": 8192,
+    "temperature": 0.7,
+    "top_p": 0.9,
+    "speculative_decoding": {
+      "enabled": true,
+      "draft_model": "josiefied-qwen2.5-0.5b-abliterated",
+      "note": "Enable in LM Studio GUI: Load 8B model → Advanced → Speculative Decoding → Select 0.5B draft",
+      "expected_speedup": "1.2-2x (20-50% faster)",
+      "draft_tokens": 5
+    }
+  },
+
+  "embeddings": {
+    "model": "text-embedding-nomic-embed-text-v2-moe",
+    "dimensions": 768,
+    "corpus": {
+      "path": "/Users/jonathanmallinger/models/corpus_output.jsonl",
+      "entries": 1447,
+      "size": "3.4MB"
+    }
+  },
+
+  "response_format": {
+    "delimiter": "'''",
+    "template": "'''\\n{response}\\n'''",
+    "markdown": true
+  },
+
+  "opencode_integration": {
+    "mode": "claude-code-cli",
+    "skip_permissions": true,
+    "system_prompt": "You are an AI coding assistant. Use ''' delimiters. Max 8192 tokens.",
+    "chat_endpoint": "http://localhost:1234/v1/chat/completions",
+    "embeddings_endpoint": "http://localhost:1234/v1/embeddings"
+  },
+
+  "credentials": {
+    "source": "1password-cli",
+    "command": "op item get <name>",
+    "note": "Use 1Password CLI for any credentials"
+  },
+
+  "how_to_enable_speculative": [
+    "1. Open LM Studio GUI",
+    "2. Load josiefied-qwen3-8b-abliterated-v1",
+    "3. Click Advanced/Performance Settings",
+    "4. Find 'Speculative Decoding' section",
+    "5. Toggle ON",
+    "6. Select draft model: josiefied-qwen2.5-0.5b-abliterated",
+    "7. Server will use speculative decoding automatically",
+    "8. All API calls to port 1234 will benefit"
+  ],
+
+  "usage": {
+    "send_questions_to": "http://localhost:1234/v1/chat/completions",
+    "curl_example": "curl -X POST http://localhost:1234/v1/chat/completions -H 'Content-Type: application/json' -d '{\"model\":\"josiefied-qwen3-8b-abliterated-v1\",\"messages\":[{\"role\":\"user\",\"content\":\"your question\"}],\"max_tokens\":8192}'",
+    "cli_script": "./opencode.sh \"your question\""
+  }
+}

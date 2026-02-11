@@ -1,0 +1,122 @@
+{
+  "_comment": "MLX Model Routing Config - Local-First for OpenCode Workflows",
+  "_version": "1.0",
+  "_updated": "2026-02-11",
+  "_canonical_endpoint": "http://localhost:1234",
+  "_fallback_endpoint": "http://localhost:8000",
+
+  "roles": {
+    "router_fast": {
+      "model_id": "josiefied-qwen2.5-0.5b-abliterated",
+      "provider": "lmstudio",
+      "speed_tok_s": 235,
+      "description": "Ultra-fast routing/classification/triage. 0.5B abliterated.",
+      "use_when": "Quick classification, intent detection, batch screening"
+    },
+    "coding_default": {
+      "model_id": "josiefied-qwen3-8b-abliterated-v1",
+      "provider": "lmstudio",
+      "speed_tok_s": 40,
+      "description": "Primary coding model. 8B abliterated, 44% jailbreak success rate.",
+      "use_when": "Default for OpenCode vibe coding, code generation, refactoring"
+    },
+    "coding_fast": {
+      "model_id": "qwen3-4b",
+      "provider": "lmstudio",
+      "speed_tok_s": 75,
+      "description": "Fast coding for simple tasks. 4B general.",
+      "use_when": "Simple edits, completions, formatting tasks"
+    },
+    "reasoning_audit": {
+      "model_id": "deepseek-r1-distill-qwen-1.5b",
+      "provider": "lmstudio",
+      "speed_tok_s": 148,
+      "description": "Chain-of-thought reasoning specialist. 1.5B distilled R1.",
+      "use_when": "Logic-heavy tasks, step-by-step analysis, security audit reasoning"
+    },
+    "security_specialist": {
+      "model_id": "josiefied-qwen3-8b-abliterated-v1",
+      "provider": "lmstudio",
+      "speed_tok_s": 40,
+      "description": "Same as coding_default - best uncensored model for security research.",
+      "use_when": "Technique evaluation, jailbreak testing, adversarial analysis"
+    },
+    "deep_finalize": {
+      "model_id": "josiefied-qwen3-14b-abliterated-v3",
+      "provider": "lmstudio",
+      "speed_tok_s": 14,
+      "description": "Largest local model. 14B 6-bit. Use for final quality pass.",
+      "use_when": "Complex analysis, final review, quality-critical outputs",
+      "warning": "6-bit quantization - verify output quality before trusting"
+    },
+    "speculative_balanced": {
+      "model_id": "qwen2.5-3b-speculative-balanced",
+      "provider": "speculative",
+      "speed_tok_s": "variable (1.5-3x base)",
+      "description": "Speculative decoding for faster throughput on Qwen2.5-3B.",
+      "use_when": "High-throughput batch work when speculative server is running"
+    }
+  },
+
+  "routing_policy": {
+    "default": "coding_default",
+    "opencode_default": "coding_default",
+    "rules": [
+      {
+        "condition": "task_complexity == 'trivial'",
+        "route_to": "router_fast",
+        "rationale": "0.5B handles classification and simple tasks at 235 tok/s"
+      },
+      {
+        "condition": "task_complexity == 'simple' and task_type == 'code'",
+        "route_to": "coding_fast",
+        "rationale": "4B Qwen3 handles simple code at 75 tok/s"
+      },
+      {
+        "condition": "task_type == 'reasoning' or task_type == 'audit'",
+        "route_to": "reasoning_audit",
+        "rationale": "DeepSeek R1 distilled for chain-of-thought at 148 tok/s"
+      },
+      {
+        "condition": "task_type == 'security_eval'",
+        "route_to": "security_specialist",
+        "rationale": "8B abliterated - 94% non-refusal, 44% jailbreak success"
+      },
+      {
+        "condition": "task_complexity == 'complex' or task_type == 'review'",
+        "route_to": "deep_finalize",
+        "rationale": "14B for maximum quality (verify output, 6-bit quant)"
+      }
+    ]
+  },
+
+  "embedding": {
+    "default_model": "text-embedding-nomic-embed-text-v2-moe",
+    "fallback_model": "text-embedding-embeddinggemma-300m-qat",
+    "dimensions": 768,
+    "endpoint": "http://localhost:1234",
+    "provider": "local",
+    "cost": "$0.00"
+  },
+
+  "endpoints": {
+    "canonical": {
+      "url": "http://localhost:1234",
+      "service": "LM Studio",
+      "status": "primary",
+      "models": "all MLX models + embedding models"
+    },
+    "speculative": {
+      "url": "http://localhost:8000",
+      "service": "MLX speculative decoding server",
+      "status": "optional",
+      "models": "Qwen2.5-3B with draft model"
+    },
+    "mlx_direct": {
+      "url": "http://localhost:11434",
+      "service": "mlx-server.py (standalone)",
+      "status": "deprecated - use LM Studio instead",
+      "models": "single model at a time"
+    }
+  }
+}

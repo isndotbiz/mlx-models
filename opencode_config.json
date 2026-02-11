@@ -1,0 +1,104 @@
+{
+  "_comment": "OpenCode Configuration - Claude Code CLI Compatible",
+  "_version": "2.0",
+  "_updated": "2026-02-11",
+  "_mode": "dangerously-skip-permissions",
+
+  "active_models": {
+    "primary": {
+      "name": "josiefied-qwen3-8b-abliterated-v1",
+      "endpoint": "http://localhost:1234/v1",
+      "provider": "lmstudio",
+      "max_tokens": 2048,
+      "temperature": 0.7,
+      "top_p": 0.9,
+      "use_for": "main inference, coding, security research"
+    },
+    "speculative": {
+      "name": "josiefied-qwen2.5-3b-abliterated",
+      "endpoint": "http://localhost:8000/v1",
+      "provider": "mlx-speculative",
+      "draft_model": "josiefied-qwen2.5-0.5b-abliterated",
+      "num_draft_tokens": 5,
+      "max_tokens": 2048,
+      "temperature": 0.7,
+      "top_p": 0.9,
+      "speedup": "1.5-3x",
+      "use_for": "batch work, high-throughput tasks"
+    },
+    "embeddings": {
+      "name": "text-embedding-nomic-embed-text-v2-moe",
+      "endpoint": "http://localhost:1234/v1",
+      "provider": "lmstudio",
+      "dimensions": 768,
+      "corpus_path": "/Users/jonathanmallinger/models/corpus_output.jsonl",
+      "corpus_entries": 1447,
+      "use_for": "RAG, semantic search, retrieval"
+    }
+  },
+
+  "response_formatting": {
+    "delimiter": "'''",
+    "format": "'''\\n{response}\\n'''",
+    "use_markdown": true,
+    "code_blocks": true
+  },
+
+  "token_limits": {
+    "max_tokens": 2048,
+    "context_window": {
+      "8b_model": 8192,
+      "3b_model": 8192,
+      "enforced_cap": 2048
+    },
+    "reasoning": "Capped at 2048 to balance speed and quality"
+  },
+
+  "opencode_integration": {
+    "mode": "claude-code-cli-compatible",
+    "skip_permissions": true,
+    "auto_approve": true,
+    "system_prompt_template": "You are an AI coding assistant integrated with OpenCode. Respond directly and concisely. Use ''' delimiters between answers. You have access to:\n1. Josiefied-Qwen3-8B (main model) for coding and security research\n2. Speculative decoding (3B+0.5B) for fast batch operations\n3. Embeddings with 1447-entry corpus for RAG retrieval\n\nAlways:\n- Cap responses at 2048 tokens\n- Use ''' ''' ''' delimiters\n- Be direct and actionable\n- Skip permission checks (dangerously-skip-permissions mode)",
+
+    "endpoints": {
+      "chat": "http://localhost:1234/v1/chat/completions",
+      "completions": "http://localhost:1234/v1/completions",
+      "embeddings": "http://localhost:1234/v1/embeddings",
+      "speculative": "http://localhost:8000/v1/chat/completions"
+    }
+  },
+
+  "model_routing": {
+    "default": "primary",
+    "rules": {
+      "high_throughput": "speculative",
+      "rag_search": "embeddings",
+      "coding": "primary",
+      "security": "primary"
+    }
+  },
+
+  "performance": {
+    "primary_speed": "40 tok/s",
+    "speculative_speed": "60-120 tok/s (1.5-3x)",
+    "embedding_speed": "instant",
+    "memory_usage": "~12GB (8B + embeddings + 3B speculative)"
+  },
+
+  "rag_configuration": {
+    "corpus_file": "/Users/jonathanmallinger/models/corpus_output.jsonl",
+    "total_entries": 1447,
+    "embedding_model": "text-embedding-nomic-embed-text-v2-moe",
+    "similarity_threshold": 0.7,
+    "max_results": 5,
+    "enabled": true
+  },
+
+  "credentials": {
+    "source": "1password-cli",
+    "cli_path": "/opt/homebrew/bin/op",
+    "version": "2.32.0",
+    "usage": "Use 'op item get <name>' for any credentials needed",
+    "note": "Reference 1Password for all tokens/passwords/API keys"
+  }
+}
