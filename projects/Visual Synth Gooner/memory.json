@@ -1,0 +1,12 @@
+{
+  "conversations": [
+    {
+      "timestamp": "2025-12-22T14:23:31.944616",
+      "user": "create me a prompt of young woman for sora",
+      "assistant": "[Response logged]",
+      "model": "qwen25-14b-mlx"
+    }
+  ],
+  "created": "2025-12-22T14:23:04.239894",
+  "modified": "2025-12-22T14:23:31.944631"
+}

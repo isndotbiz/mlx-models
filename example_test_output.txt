@@ -1,0 +1,109 @@
+======================================================================
+  SPECULATIVE DECODING - COMPLETE TEST SUITE
+======================================================================
+
+Server Status Check
+===================
+✅ Speculative Server (port 8000): RUNNING
+✅ LM Studio (port 1234): RUNNING
+✅ MLX Server (port 11434): RUNNING
+
+Testing Speculative Decoding Configurations
+============================================
+
+Testing: No speculative decoding
+✅   18.2 tokens/sec, 13.74s total
+
+Testing: 3 draft tokens
+✅   24.1 tokens/sec, 10.37s total
+
+Testing: 5 draft tokens
+✅   29.8 tokens/sec, 8.39s total
+
+Testing: 7 draft tokens
+✅   27.3 tokens/sec, 9.16s total
+
+Performance Comparison
+======================
+
+╭────────────────────────────────────────────────────────────────╮
+│              Speculative Decoding Performance                  │
+├────────────────────┬──────────┬────────────┬──────────┬────────┤
+│ Configuration      │ Tok/Sec  │ Total Time │ Speedup  │ Rating │
+├────────────────────┼──────────┼────────────┼──────────┼────────┤
+│ No spec            │     18.2 │     13.74s │ baseline │        │
+│ 3 draft tokens     │     24.1 │     10.37s │    +32%  │        │
+│ 5 draft tokens     │     29.8 │      8.39s │    +64%  │ ⭐ BEST│
+│ 7 draft tokens     │     27.3 │      9.16s │    +50%  │        │
+╰────────────────────┴──────────┴────────────┴──────────┴────────╯
+
+Testing Different Prompt Types
+===============================
+
+Security research query:
+✅   Baseline: 18.5 tok/s
+✅   Speculative: 28.2 tok/s (+53%)
+
+Code generation:
+✅   Baseline: 19.1 tok/s
+✅   Speculative: 31.4 tok/s (+64%)
+
+Technical explanation:
+✅   Baseline: 17.8 tok/s
+✅   Speculative: 29.8 tok/s (+67%)
+
+Creative problem-solving:
+✅   Baseline: 18.9 tok/s
+✅   Speculative: 27.1 tok/s (+43%)
+
+Prompt Type Comparison
+======================
+
+╭──────────────────────────────────────────────────────────────╮
+│              Performance by Prompt Type                      │
+├───────────────────────┬──────────┬─────────────┬──────┬──────┤
+│ Prompt Type           │ Baseline │ Speculative │ Spdup│Benefit│
+├───────────────────────┼──────────┼─────────────┼──────┼──────┤
+│ Security research     │ 18.5 tok/│    28.2 tok/│  +53%│✓ Good│
+│ Code generation       │ 19.1 tok/│    31.4 tok/│  +64%│🚀 High│
+│ Technical explanation │ 17.8 tok/│    29.8 tok/│  +67%│🚀 High│
+│ Creative problem-solv │ 18.9 tok/│    27.1 tok/│  +43%│~ Mod │
+╰───────────────────────┴──────────┴─────────────┴──────┴──────╯
+
+Testing System Prompts
+======================
+
+Testing: anti_refusal
+✅   Generated 187 tokens in 6.28s
+  Preview: To implement authentication in a web application, you need to...
+
+Testing: empty
+✅   Generated 175 tokens in 5.87s
+  Preview: Authentication is a critical component of web application...
+
+Testing: expert
+✅   Generated 203 tokens in 6.82s
+  Preview: As an expert in web security, I'll explain comprehensive...
+
+Testing: concise
+✅   Generated 156 tokens in 5.23s
+  Preview: Use JWT tokens or session-based auth. Hash passwords with...
+
+✅ Report saved to: /Users/jonathanmallinger/models/test_results.json
+
+Final Summary & Recommendations
+================================
+
+╭─────────────────────────────────────────────────────────╮
+│            🏆 Recommended Configuration                 │
+│                                                         │
+│                   5 draft tokens                        │
+│                                                         │
+│ Performance: 29.8 tokens/sec                            │
+│ Speedup: +64% vs baseline                               │
+╰─────────────────────────────────────────────────────────╯
+
+💡 Best Use Case: Technical explanation
+   Achieves +67% speedup with speculative decoding
+
+✨ Testing complete! Check test_results.json for detailed metrics.

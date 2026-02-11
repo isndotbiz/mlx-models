@@ -1,0 +1,110 @@
+SPECULATIVE DECODING TEST SUITE - FILE SUMMARY
+===============================================
+
+MAIN EXECUTABLE
+--------------
+test_speculative_complete.py    (24 KB)  - Complete test suite script
+  ✅ Auto-detects servers
+  ✅ Tests all configurations
+  ✅ Measures performance
+  ✅ Generates reports
+  ✅ Beautiful visual output
+
+QUICK START
+-----------
+START_HERE_TESTS.md             (3.5 KB) - START HERE for quick overview
+RUN_TESTS.md                    (4.6 KB) - How to run the tests
+QUICK_REFERENCE.md              (4.1 KB) - One-page cheat sheet
+
+DETAILED DOCUMENTATION
+---------------------
+TESTING_GUIDE.md                (7.3 KB) - Complete testing guide
+TEST_SUITE_OVERVIEW.md          (10 KB)  - Comprehensive overview
+
+EXAMPLES
+--------
+example_test_output.txt         (5.2 KB) - Sample test output
+example_test_results.json       (3.4 KB) - Sample JSON report
+
+USAGE
+-----
+
+1. Install dependencies:
+   pip install requests rich
+
+2. Start server (Terminal 1):
+   python test_speculative.py
+
+3. Run tests (Terminal 2):
+   python test_speculative_complete.py
+
+4. Check results:
+   cat test_results.json
+
+WHAT YOU GET
+------------
+✅ Server status check
+✅ Configuration benchmarks (0/3/5/7 tokens)
+✅ Prompt type comparison
+✅ System prompt testing
+✅ JSON report with recommendations
+✅ Optimal configuration identified
+
+EXPECTED RESULTS
+----------------
+Baseline:    18-22 tok/s
+3 tokens:    +25-35% speedup
+5 tokens:    +40-65% speedup  ⭐ USUALLY BEST
+7 tokens:    +30-55% speedup
+
+TIME REQUIRED
+-------------
+⏱️  15-20 minutes for complete suite
+
+OUTPUT FILES
+------------
+test_results.json - Complete performance data and recommendations
+
+TROUBLESHOOTING
+--------------
+Server not running?     → python test_speculative.py
+Import errors?          → pip install requests rich
+Connection timeout?     → Check firewall, restart server
+Slow performance?       → Close other apps, check GPU
+
+DOCUMENTATION READING ORDER
+---------------------------
+1. START_HERE_TESTS.md  - Quick overview (read first!)
+2. RUN_TESTS.md         - Before running tests
+3. QUICK_REFERENCE.md   - Keep open during testing
+4. TESTING_GUIDE.md     - For detailed explanations
+5. TEST_SUITE_OVERVIEW.md - Complete reference
+
+SUCCESS CRITERIA
+----------------
+✅ Tests complete without errors
+✅ Speedup > 30% vs baseline
+✅ Report generated successfully
+✅ Clear recommendations displayed
+
+NEXT STEPS
+----------
+1. Review test_results.json
+2. Note recommended configuration
+3. Update production server settings
+4. Test with real workload
+5. Monitor performance
+
+PRODUCTION DEPLOYMENT
+--------------------
+Use recommended settings (typically 5 tokens):
+
+python -m vllm.entrypoints.openai.api_server \
+    --model deepseek-ai/DeepSeek-R1-Distill-Qwen-7B \
+    --speculative-model Qwen/Qwen2.5-1.5B-Instruct \
+    --num-speculative-tokens 5 \
+    --use-v2-block-manager \
+    --disable-log-requests
+
+Created: 2026-02-10
+Status: ✅ Production Ready
