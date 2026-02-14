@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "local-agent": {
+      "command": "/Users/jonathanmallinger/models/mcp-local-agent/.venv/bin/python3",
+      "args": ["/Users/jonathanmallinger/models/mcp-local-agent/server.py"]
+    }
+  }
+}

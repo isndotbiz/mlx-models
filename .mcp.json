@@ -10,6 +10,13 @@
       "env": {
         "GITHUB_PERSONAL_ACCESS_TOKEN": "${GITHUB_TOKEN}"
       }
+    },
+    "local-agent": {
+      "type": "stdio",
+      "command": "/Users/jonathanmallinger/models/mcp-local-agent/.venv/bin/python3",
+      "args": [
+        "/Users/jonathanmallinger/models/mcp-local-agent/server.py"
+      ]
     }
   }
 }
