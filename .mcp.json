@@ -16,7 +16,11 @@
       "command": "/Users/jonathanmallinger/models/mcp-local-agent/.venv/bin/python3",
       "args": [
         "/Users/jonathanmallinger/models/mcp-local-agent/server.py"
-      ]
+      ],
+      "env": {
+        "LM_STUDIO_BASE_URL": "http://localhost:8080",
+        "LM_STUDIO_CHAT_MODEL": "josiefied-qwen3-30b-a3b-abliterated"
+      }
     }
   }
 }

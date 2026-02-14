@@ -2,27 +2,34 @@
 """
 MLX LM Server - OpenAI-compatible API server for MLX models.
 Serves Qwen3-30B-A3B MoE models directly via mlx_lm, bypassing LM Studio.
+
+Usage:
+    ./mlx-server/.venv/bin/python3 mlx-server/server.py
+    ./mlx-server/.venv/bin/python3 mlx-server/server.py --model qwen3-coder-30b-a3b
+    ./mlx-server/.venv/bin/python3 mlx-server/server.py --port 8080 --no-thinking
 """
 
 import argparse
 import json
+import re
 import time
 import uuid
 from contextlib import asynccontextmanager
 from typing import Optional
 
-import mlx.core as mx
 import uvicorn
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI
 from fastapi.responses import StreamingResponse
 from mlx_lm import load, generate
-from mlx_lm.utils import generate_step
-from pydantic import BaseModel, Field
+from mlx_lm.generate import stream_generate
+from mlx_lm.sample_utils import make_sampler
+from pydantic import BaseModel
 
-# Global model state
+# Global state
 MODEL = None
 TOKENIZER = None
 MODEL_ID = None
+NO_THINKING = False
 
 AVAILABLE_MODELS = {
     "josiefied-qwen3-30b-a3b-abliterated": {
@@ -62,7 +69,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="MLX LM Server", lifespan=lifespan)
 
 
-# --- Request/Response schemas ---
+# --- Schemas ---
 
 class ChatMessage(BaseModel):
     role: str
@@ -102,60 +109,18 @@ class ChatCompletionResponse(BaseModel):
 
 # --- Helpers ---
 
+def strip_thinking(text: str) -> str:
+    """Remove <think>...</think> blocks from response."""
+    return re.sub(r"<think>.*?</think>\s*", "", text, flags=re.DOTALL).strip()
+
+
 def apply_chat_template(messages: list[ChatMessage]) -> str:
     """Apply the tokenizer's chat template to format messages."""
     formatted = [{"role": m.role, "content": m.content} for m in messages]
-    return TOKENIZER.apply_chat_template(
-        formatted, tokenize=False, add_generation_prompt=True
-    )
-
-
-def generate_text(prompt: str, max_tokens: int, temperature: float,
-                   top_p: float, repetition_penalty: float) -> tuple[str, int, int]:
-    """Generate text and return (text, prompt_tokens, completion_tokens)."""
-    tokens = mx.array(TOKENIZER.encode(prompt))
-    prompt_len = tokens.shape[0]
-
-    # Use mlx_lm.generate for simplicity
-    response = generate(
-        MODEL,
-        TOKENIZER,
-        prompt=prompt,
-        max_tokens=max_tokens,
-        temp=temperature,
-        top_p=top_p,
-        repetition_penalty=repetition_penalty,
-    )
-
-    completion_tokens = len(TOKENIZER.encode(response))
-    return response, prompt_len, completion_tokens
-
-
-def generate_stream(prompt: str, max_tokens: int, temperature: float,
-                    top_p: float, repetition_penalty: float):
-    """Generate text token by token for streaming."""
-    tokens = mx.array(TOKENIZER.encode(prompt))
-    prompt_len = tokens.shape[0]
-    detokenizer = TOKENIZER._tokenizer  # sentencepiece/tiktoken detokenizer
-
-    generated = 0
-    for (token, _), _ in zip(
-        generate_step(
-            tokens,
-            MODEL,
-            temp=temperature,
-            top_p=top_p,
-            repetition_penalty=repetition_penalty,
-        ),
-        range(max_tokens),
-    ):
-        token_id = token.item()
-        # Check for EOS
-        if token_id == TOKENIZER.eos_token_id:
-            break
-        text = TOKENIZER.decode([token_id])
-        generated += 1
-        yield text, prompt_len, generated
+    kwargs = {"tokenize": False, "add_generation_prompt": True}
+    if NO_THINKING:
+        kwargs["enable_thinking"] = False
+    return TOKENIZER.apply_chat_template(formatted, **kwargs)
 
 
 # --- API Endpoints ---
@@ -163,7 +128,7 @@ def generate_stream(prompt: str, max_tokens: int, temperature: float,
 @app.get("/v1/models")
 async def list_models():
     models = []
-    for key, info in AVAILABLE_MODELS.items():
+    for key in AVAILABLE_MODELS:
         models.append({
             "id": key,
             "object": "model",
@@ -175,6 +140,8 @@ async def list_models():
 
 @app.post("/v1/chat/completions")
 async def chat_completions(request: ChatCompletionRequest):
+    global MODEL, TOKENIZER, MODEL_ID
+
     # Switch model if needed
     if request.model != MODEL_ID and request.model in AVAILABLE_MODELS:
         load_model(request.model)
@@ -182,37 +149,59 @@ async def chat_completions(request: ChatCompletionRequest):
     prompt = apply_chat_template(request.messages)
     request_id = f"chatcmpl-{uuid.uuid4().hex[:12]}"
     created = int(time.time())
+    sampler = make_sampler(
+        temp=request.temperature,
+        top_p=request.top_p,
+    )
 
     if request.stream:
         async def stream_response():
-            for text, p_tokens, c_tokens in generate_stream(
-                prompt, request.max_tokens, request.temperature,
-                request.top_p, request.repetition_penalty
+            full_text = ""
+            in_think = False
+            prompt_tokens = 0
+
+            for resp in stream_generate(
+                MODEL, TOKENIZER, prompt=prompt,
+                max_tokens=request.max_tokens, sampler=sampler,
             ):
+                prompt_tokens = resp.prompt_tokens
+                text = resp.text
+                full_text += text
+
+                # If --no-thinking, skip content inside <think> tags
+                if NO_THINKING:
+                    if "<think>" in full_text and not in_think:
+                        in_think = True
+                    if in_think:
+                        if "</think>" in full_text:
+                            # Strip everything up to and including </think>
+                            after = full_text.split("</think>", 1)[1].lstrip()
+                            full_text = after
+                            in_think = False
+                            text = after  # emit what's after
+                        else:
+                            continue  # skip emitting while thinking
+                    if not text:
+                        continue
+
                 chunk = {
                     "id": request_id,
                     "object": "chat.completion.chunk",
                     "created": created,
                     "model": MODEL_ID,
-                    "choices": [{
-                        "index": 0,
-                        "delta": {"content": text},
-                        "finish_reason": None,
-                    }],
+                    "choices": [{"index": 0, "delta": {"content": text}, "finish_reason": None}],
                 }
                 yield f"data: {json.dumps(chunk)}\n\n"
 
-            # Final chunk
+                if resp.finish_reason:
+                    break
+
             final = {
                 "id": request_id,
                 "object": "chat.completion.chunk",
                 "created": created,
                 "model": MODEL_ID,
-                "choices": [{
-                    "index": 0,
-                    "delta": {},
-                    "finish_reason": "stop",
-                }],
+                "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}],
             }
             yield f"data: {json.dumps(final)}\n\n"
             yield "data: [DONE]\n\n"
@@ -220,16 +209,23 @@ async def chat_completions(request: ChatCompletionRequest):
         return StreamingResponse(stream_response(), media_type="text/event-stream")
 
     # Non-streaming
-    text, prompt_tokens, completion_tokens = generate_text(
-        prompt, request.max_tokens, request.temperature,
-        request.top_p, request.repetition_penalty
+    response_text = generate(
+        MODEL, TOKENIZER, prompt=prompt,
+        max_tokens=request.max_tokens, sampler=sampler,
     )
+
+    prompt_tokens = len(TOKENIZER.encode(prompt))
+
+    if NO_THINKING:
+        response_text = strip_thinking(response_text)
+
+    completion_tokens = len(TOKENIZER.encode(response_text))
 
     return ChatCompletionResponse(
         id=request_id,
         created=created,
         model=MODEL_ID,
-        choices=[Choice(message=ChatMessage(role="assistant", content=text))],
+        choices=[Choice(message=ChatMessage(role="assistant", content=response_text))],
         usage=Usage(
             prompt_tokens=prompt_tokens,
             completion_tokens=completion_tokens,
@@ -240,7 +236,7 @@ async def chat_completions(request: ChatCompletionRequest):
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "model": MODEL_ID}
+    return {"status": "ok", "model": MODEL_ID, "no_thinking": NO_THINKING}
 
 
 if __name__ == "__main__":
@@ -252,9 +248,13 @@ if __name__ == "__main__":
                         help="Port to serve on (default: 8080)")
     parser.add_argument("--host", default="127.0.0.1",
                         help="Host to bind to (default: 127.0.0.1)")
+    parser.add_argument("--no-thinking", action="store_true",
+                        help="Disable thinking/reasoning mode for faster responses")
     args = parser.parse_args()
 
+    NO_THINKING = args.no_thinking
     app.state.initial_model = args.model
     print(f"Starting MLX LM Server on {args.host}:{args.port}")
-    print(f"Available models: {list(AVAILABLE_MODELS.keys())}")
+    print(f"Model: {args.model}")
+    print(f"Thinking mode: {'disabled' if NO_THINKING else 'enabled'}")
     uvicorn.run(app, host=args.host, port=args.port)
