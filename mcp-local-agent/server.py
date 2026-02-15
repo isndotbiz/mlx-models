@@ -4,21 +4,21 @@ MCP server that delegates analysis, summarization, research, embedding,
 and RAG tasks to a local LM Studio instance.
 
 LM Studio exposes an OpenAI-compatible API at http://localhost:1234.
-Chat model : Josiefied-Qwen3-8B-abliterated-v1-4bit
+Chat model : Josiefied-Qwen3-14B-abliterated-v3
 Embedding model: nomic-embed-text-v2-moe (768-dim)
+RAG backend: ChromaDB at ~/workspace/rag-system/chroma_data/
 """
 
 from __future__ import annotations
 
 import logging
 import os
-import pickle
 import sys
 from pathlib import Path
 from typing import Any
 
+import chromadb
 import httpx
-import numpy as np
 from mcp.server.fastmcp import FastMCP
 
 # ---------------------------------------------------------------------------
@@ -28,15 +28,19 @@ from mcp.server.fastmcp import FastMCP
 LM_STUDIO_BASE_URL = os.environ.get("LM_STUDIO_BASE_URL", "http://localhost:1234")
 CHAT_MODEL = os.environ.get(
     "LM_STUDIO_CHAT_MODEL",
-    "Josiefied-Qwen3-8B-abliterated-v1-4bit",
+    "josiefied-qwen3-14b-abliterated-v3",
 )
 EMBEDDING_MODEL = os.environ.get(
     "LM_STUDIO_EMBEDDING_MODEL",
     "nomic-embed-text-v2-moe",
 )
-EMBEDDING_INDEX_PATH = os.environ.get(
-    "EMBEDDING_INDEX_PATH",
-    "/Users/jonathanmallinger/models/embedding_index.pkl",
+CHROMADB_PATH = os.environ.get(
+    "CHROMADB_PATH",
+    "/Users/jonathanmallinger/workspace/rag-system/chroma_data",
+)
+CHROMADB_COLLECTION = os.environ.get(
+    "CHROMADB_COLLECTION",
+    "security_corpus",
 )
 
 REQUEST_TIMEOUT = float(os.environ.get("LM_STUDIO_TIMEOUT", "120"))
@@ -116,7 +120,6 @@ def _get_embeddings(texts: list[str]) -> list[list[float]]:
             resp = client.post("/v1/embeddings", json=payload)
             resp.raise_for_status()
             data = resp.json()
-            # Sort by index to guarantee order matches input order
             sorted_items = sorted(data["data"], key=lambda d: d["index"])
             return [item["embedding"] for item in sorted_items]
     except httpx.ConnectError:
@@ -136,55 +139,27 @@ def _get_embeddings(texts: list[str]) -> list[list[float]]:
 
 
 # ---------------------------------------------------------------------------
-# RAG index helpers
+# ChromaDB RAG helpers
 # ---------------------------------------------------------------------------
 
-_rag_index_cache: dict[str, Any] | None = None
+_chroma_collection = None
 
 
-def _load_rag_index() -> list[dict[str, Any]]:
-    """Load and cache the embedding index from disk."""
-    global _rag_index_cache  # noqa: PLW0603
-    if _rag_index_cache is not None:
-        return _rag_index_cache
+def _get_collection():
+    """Get or create the ChromaDB collection (lazy init)."""
+    global _chroma_collection
+    if _chroma_collection is not None:
+        return _chroma_collection
 
-    index_path = Path(EMBEDDING_INDEX_PATH)
-    if not index_path.exists():
-        raise FileNotFoundError(
-            f"Embedding index not found at {EMBEDDING_INDEX_PATH}. "
-            "Run the index builder first."
-        )
-    log.info("Loading RAG index from %s ...", EMBEDDING_INDEX_PATH)
-    with open(index_path, "rb") as fh:
-        _rag_index_cache = pickle.load(fh)  # noqa: S301
-    log.info("Loaded %d chunks into RAG index.", len(_rag_index_cache))
-    return _rag_index_cache
-
-
-def _cosine_similarity(a: np.ndarray, b: np.ndarray) -> np.ndarray:
-    """Compute cosine similarity between vector *a* and matrix *b* (rows)."""
-    a_norm = a / (np.linalg.norm(a) + 1e-10)
-    b_norms = b / (np.linalg.norm(b, axis=1, keepdims=True) + 1e-10)
-    return b_norms @ a_norm
-
-
-def _retrieve_chunks(query_embedding: list[float], top_k: int = RAG_TOP_K) -> list[dict[str, Any]]:
-    """Return top-k most similar chunks from the RAG index."""
-    index = _load_rag_index()
-    embeddings_matrix = np.array([entry["embedding"] for entry in index], dtype=np.float32)
-    query_vec = np.array(query_embedding, dtype=np.float32)
-    similarities = _cosine_similarity(query_vec, embeddings_matrix)
-    top_indices = np.argsort(similarities)[::-1][:top_k]
-    results = []
-    for idx in top_indices:
-        entry = index[int(idx)]
-        results.append({
-            "id": entry.get("id"),
-            "text": entry["text"],
-            "score": float(similarities[idx]),
-            "metadata": entry.get("metadata", {}),
-        })
-    return results
+    log.info("Connecting to ChromaDB at %s ...", CHROMADB_PATH)
+    client = chromadb.PersistentClient(path=CHROMADB_PATH)
+    _chroma_collection = client.get_collection(CHROMADB_COLLECTION)
+    log.info(
+        "Loaded collection '%s' with %d documents.",
+        CHROMADB_COLLECTION,
+        _chroma_collection.count(),
+    )
+    return _chroma_collection
 
 
 # ---------------------------------------------------------------------------
@@ -195,7 +170,7 @@ mcp = FastMCP(
     "local-agent",
     instructions=(
         "Delegates analysis, summarization, research, embedding, and RAG "
-        "tasks to a local LM Studio instance (Qwen3-8B). Use this to offload "
+        "tasks to a local LM Studio instance (Qwen3-14B). Use this to offload "
         "work and save Claude tokens."
     ),
 )
@@ -225,7 +200,6 @@ def local_analyze(file_path: str, prompt: str, max_tokens: int = DEFAULT_MAX_TOK
     if not path.is_file():
         return f"Error: Path is not a file: {path}"
 
-    # Guard against enormous files
     file_size = path.stat().st_size
     if file_size > 500_000:
         return (
@@ -238,7 +212,6 @@ def local_analyze(file_path: str, prompt: str, max_tokens: int = DEFAULT_MAX_TOK
     except Exception as exc:
         return f"Error reading file: {exc}"
 
-    # Determine a reasonable file-type hint
     suffix = path.suffix.lstrip(".")
     lang_hint = suffix if suffix else "text"
 
@@ -396,7 +369,6 @@ def local_embed(text: str | list[str]) -> dict:
     if not texts:
         return {"error": "No text provided."}
 
-    # Guard against excessive batch size
     if len(texts) > 100:
         return {"error": "Too many texts. Maximum batch size is 100."}
 
@@ -422,11 +394,9 @@ def local_rag_query(
     max_tokens: int = DEFAULT_MAX_TOKENS,
 ) -> dict:
     """
-    Query the local RAG index. Computes the query embedding, retrieves the
-    top-k most similar chunks, then sends those chunks and the question to
-    the local LLM for a grounded answer.
-
-    The index is loaded from /Users/jonathanmallinger/models/embedding_index.pkl.
+    Query the local RAG system. Uses ChromaDB to retrieve the top-k most
+    similar chunks, then sends those chunks and the question to the local
+    LLM for a grounded answer.
 
     Args:
         question: The question to answer using RAG.
@@ -437,35 +407,35 @@ def local_rag_query(
         A dict with "answer", "sources" (retrieved chunks with scores),
         and "chunks_used".
     """
-    # Step 1: Compute query embedding
+    # Step 1: Query ChromaDB (it handles embedding internally)
     try:
-        query_embeddings = _get_embeddings([question])
-    except (ConnectionError, TimeoutError, RuntimeError) as exc:
-        return {"error": f"Embedding failed: {exc}"}
+        collection = _get_collection()
+        results = collection.query(
+            query_texts=[question],
+            n_results=top_k,
+        )
+    except Exception as exc:
+        return {"error": f"ChromaDB query failed: {exc}"}
 
-    query_embedding = query_embeddings[0]
+    if not results["documents"] or not results["documents"][0]:
+        return {"error": "No chunks retrieved from ChromaDB."}
 
-    # Step 2: Retrieve top-k similar chunks
-    try:
-        chunks = _retrieve_chunks(query_embedding, top_k=top_k)
-    except FileNotFoundError as exc:
-        return {"error": str(exc)}
+    documents = results["documents"][0]
+    metadatas = results["metadatas"][0] if results["metadatas"] else [{}] * len(documents)
+    distances = results["distances"][0] if results["distances"] else [0.0] * len(documents)
 
-    if not chunks:
-        return {"error": "No chunks retrieved from the index."}
-
-    # Step 3: Build context from retrieved chunks
+    # Step 2: Build context from retrieved chunks
     context_parts = []
-    for i, chunk in enumerate(chunks, 1):
-        source = chunk.get("metadata", {}).get("source_file", "unknown")
-        score = chunk["score"]
+    for i, (doc, meta, dist) in enumerate(zip(documents, metadatas, distances), 1):
+        source = meta.get("source_file", meta.get("source", "unknown"))
+        score = 1.0 - dist  # ChromaDB distances -> similarity
         context_parts.append(
             f"--- Chunk {i} (source: {source}, relevance: {score:.3f}) ---\n"
-            f"{chunk['text']}\n"
+            f"{doc}\n"
         )
     context_block = "\n".join(context_parts)
 
-    # Step 4: Send to LLM for grounded answer
+    # Step 3: Send to LLM for grounded answer
     messages = [
         {
             "role": "system",
@@ -491,20 +461,19 @@ def local_rag_query(
     except (ConnectionError, TimeoutError, RuntimeError) as exc:
         return {"error": f"LLM call failed: {exc}"}
 
-    # Build source list (without the full embedding vectors)
+    # Build source list
     sources = []
-    for chunk in chunks:
+    for doc, meta, dist in zip(documents, metadatas, distances):
         sources.append({
-            "id": chunk.get("id"),
-            "score": chunk["score"],
-            "source_file": chunk.get("metadata", {}).get("source_file", "unknown"),
-            "text_preview": chunk["text"][:200] + ("..." if len(chunk["text"]) > 200 else ""),
+            "score": round(1.0 - dist, 3),
+            "source_file": meta.get("source_file", meta.get("source", "unknown")),
+            "text_preview": doc[:200] + ("..." if len(doc) > 200 else ""),
         })
 
     return {
         "answer": answer,
         "sources": sources,
-        "chunks_used": len(chunks),
+        "chunks_used": len(documents),
     }
 
 
@@ -519,7 +488,7 @@ def main():
     log.info("LM Studio URL : %s", LM_STUDIO_BASE_URL)
     log.info("Chat model    : %s", CHAT_MODEL)
     log.info("Embed model   : %s", EMBEDDING_MODEL)
-    log.info("RAG index     : %s", EMBEDDING_INDEX_PATH)
+    log.info("ChromaDB      : %s (%s)", CHROMADB_PATH, CHROMADB_COLLECTION)
     mcp.run(transport="stdio")
 
 
