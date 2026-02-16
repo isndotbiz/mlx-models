@@ -398,7 +398,7 @@ For abliterated/uncensored versions, search HuggingFace for:
 #    - Git: https://git-scm.com
 
 # 2. Clone your repos
-git clone https://github.com/isndotbiz/mlx-models.git models
+git clone https://github.com/isndotbiz/local-models.git models
 git clone https://github.com/isndotbiz/rag-system.git rag-system
 
 # 3. Set up MCP local-agent
@@ -445,7 +445,7 @@ curl -X POST http://localhost:1234/v1/chat/completions ^
 | ChromaDB | https://github.com/chroma-core/chroma | Vector database for RAG |
 | MCP Python SDK | https://github.com/modelcontextprotocol/python-sdk | MCP server framework |
 | OpenCode | https://github.com/opencode-ai/opencode | Local coding assistant |
-| Your models repo | https://github.com/isndotbiz/mlx-models | Config + MCP agent code |
+| Your models repo | https://github.com/isndotbiz/local-models | Config + MCP agent code |
 | Your RAG repo | https://github.com/isndotbiz/rag-system | RAG pipeline + ChromaDB data |
 | HuggingFace CLI | `pip install huggingface-hub` | Model downloads |
 
@@ -610,7 +610,7 @@ client = chromadb.HttpClient(host="NAS_IP", port=8000)
 
 | Repo | GitHub | Contains |
 |------|--------|----------|
-| `mlx-models` | isndotbiz/mlx-models | MCP agent, configs, scripts, this manual |
+| `local-models` | isndotbiz/local-models | MCP agent, configs, scripts, this manual |
 | `rag-system` | isndotbiz/rag-system | RAG pipeline, ChromaDB data, ingestion scripts |
 | `llm-security-research` | isndotbiz/llm-security-research | Source corpus, research files |
 
@@ -632,7 +632,7 @@ client = chromadb.HttpClient(host="NAS_IP", port=8000)
 
 ```bash
 # 1. Clone repos
-git clone https://github.com/isndotbiz/mlx-models.git models
+git clone https://github.com/isndotbiz/local-models.git models
 git clone https://github.com/isndotbiz/rag-system.git rag-system
 git clone https://github.com/isndotbiz/llm-security-research.git
 
@@ -735,7 +735,7 @@ claude  # Claude Code picks up .mcp.json automatically
 ## GitHub Repos & Downloads Master List
 
 ### Your Repos
-- https://github.com/isndotbiz/mlx-models — MCP agent + configs
+- https://github.com/isndotbiz/local-models — MCP agent + configs
 - https://github.com/isndotbiz/rag-system — RAG pipeline + ChromaDB
 
 ### Infrastructure
