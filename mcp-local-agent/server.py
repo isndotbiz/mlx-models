@@ -6,7 +6,7 @@ and RAG tasks to a local LM Studio instance.
 LM Studio exposes an OpenAI-compatible API at http://localhost:1234.
 Chat model : Josiefied-Qwen3-14B-abliterated-v3
 Embedding model: nomic-embed-text-v2-moe (768-dim)
-RAG backend: ChromaDB at ~/workspace/rag-system/chroma_data/
+RAG backend: pgvector (PostgreSQL)
 """
 
 from __future__ import annotations
@@ -17,9 +17,11 @@ import sys
 from pathlib import Path
 from typing import Any
 
-import chromadb
 import httpx
+import psycopg2
+import psycopg2.extras
 from mcp.server.fastmcp import FastMCP
+from pgvector.psycopg2 import register_vector
 
 # ---------------------------------------------------------------------------
 # Configuration
@@ -34,17 +36,7 @@ EMBEDDING_MODEL = os.environ.get(
     "LM_STUDIO_EMBEDDING_MODEL",
     "nomic-embed-text-v2-moe",
 )
-CHROMADB_MODE = os.environ.get("CHROMADB_MODE", "local")  # "local" or "http"
-CHROMADB_PATH = os.environ.get(
-    "CHROMADB_PATH",
-    "/Users/jonathanmallinger/workspace/rag-system/chroma_data",
-)
-CHROMADB_HOST = os.environ.get("CHROMADB_HOST", "localhost")
-CHROMADB_PORT = int(os.environ.get("CHROMADB_PORT", "8001"))
-CHROMADB_COLLECTION = os.environ.get(
-    "CHROMADB_COLLECTION",
-    "security_corpus",
-)
+PG_DSN = os.environ.get("PG_DSN", "postgresql://localhost/rag_db")
 
 REQUEST_TIMEOUT = float(os.environ.get("LM_STUDIO_TIMEOUT", "120"))
 DEFAULT_MAX_TOKENS = int(os.environ.get("LM_STUDIO_MAX_TOKENS", "4096"))
@@ -142,43 +134,37 @@ def _get_embeddings(texts: list[str]) -> list[list[float]]:
 
 
 # ---------------------------------------------------------------------------
-# ChromaDB RAG helpers
+# pgvector RAG helpers
 # ---------------------------------------------------------------------------
 
-_chroma_collection = None
 
-
-def _get_collection():
-    """Get or create the ChromaDB collection (lazy init).
-
-    Supports two modes via CHROMADB_MODE env var:
-    - "local"  (default): PersistentClient reading from CHROMADB_PATH on disk.
-    - "http": HttpClient connecting to a remote chroma server at
-              CHROMADB_HOST:CHROMADB_PORT (e.g. Xeon running
-              ``chroma run --path /mnt/pmem/workspace/chroma_data --port 8001``).
-    """
-    global _chroma_collection
-    if _chroma_collection is not None:
-        return _chroma_collection
-
-    if CHROMADB_MODE == "http":
-        log.info(
-            "Connecting to ChromaDB HTTP server at %s:%d ...",
-            CHROMADB_HOST,
-            CHROMADB_PORT,
-        )
-        client = chromadb.HttpClient(host=CHROMADB_HOST, port=CHROMADB_PORT)
-    else:
-        log.info("Connecting to ChromaDB at %s ...", CHROMADB_PATH)
-        client = chromadb.PersistentClient(path=CHROMADB_PATH)
-
-    _chroma_collection = client.get_collection(CHROMADB_COLLECTION)
-    log.info(
-        "Loaded collection '%s' with %d documents.",
-        CHROMADB_COLLECTION,
-        _chroma_collection.count(),
-    )
-    return _chroma_collection
+def _pgvector_query(query_embedding: list[float], top_k: int) -> list[dict]:
+    """Query the security_corpus table using cosine similarity."""
+    conn = psycopg2.connect(PG_DSN)
+    register_vector(conn)
+    try:
+        with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+            cur.execute(
+                """
+                SELECT
+                    id,
+                    content,
+                    source_file,
+                    technique_id,
+                    slug,
+                    source_repo,
+                    chunk_id,
+                    total_chunks,
+                    1 - (embedding <=> %s::vector) AS similarity
+                FROM security_corpus
+                ORDER BY embedding <=> %s::vector
+                LIMIT %s
+                """,
+                [query_embedding, query_embedding, top_k],
+            )
+            return [dict(r) for r in cur.fetchall()]
+    finally:
+        conn.close()
 
 
 # ---------------------------------------------------------------------------
@@ -368,38 +354,30 @@ def local_rag_query(
     top_k: int = RAG_TOP_K,
     max_tokens: int = DEFAULT_MAX_TOKENS,
 ) -> dict:
-    """Query ChromaDB RAG (security-research corpus, 1447 docs) and answer with grounded LLM response. Returns {"answer", "sources", "chunks_used"}."""
+    """Query pgvector RAG (security-research corpus, 1447 docs) and answer with grounded LLM response. Returns {"answer", "sources", "chunks_used"}."""
     # Step 1: Embed the question via LM Studio (same model used at ingest time)
     try:
         query_embedding = _get_embeddings([question])[0]
     except (ConnectionError, TimeoutError, RuntimeError) as exc:
         return {"error": f"Embedding failed: {exc}"}
 
-    # Step 2: Query ChromaDB with the pre-computed embedding vector
+    # Step 2: Query pgvector with the pre-computed embedding vector
     try:
-        collection = _get_collection()
-        results = collection.query(
-            query_embeddings=[query_embedding],
-            n_results=top_k,
-        )
+        rows = _pgvector_query(query_embedding, top_k)
     except Exception as exc:
-        return {"error": f"ChromaDB query failed: {exc}"}
+        return {"error": f"pgvector query failed: {exc}"}
 
-    if not results["documents"] or not results["documents"][0]:
-        return {"error": "No chunks retrieved from ChromaDB."}
-
-    documents = results["documents"][0]
-    metadatas = results["metadatas"][0] if results["metadatas"] else [{}] * len(documents)
-    distances = results["distances"][0] if results["distances"] else [0.0] * len(documents)
+    if not rows:
+        return {"error": "No chunks retrieved from pgvector."}
 
     # Step 3: Build context from retrieved chunks
     context_parts = []
-    for i, (doc, meta, dist) in enumerate(zip(documents, metadatas, distances), 1):
-        source = meta.get("source_file", meta.get("source", "unknown"))
-        score = 1.0 - dist  # ChromaDB distances -> similarity
+    for i, row in enumerate(rows, 1):
+        source = row.get("source_file", "unknown")
+        score = row.get("similarity", 0.0)
         context_parts.append(
             f"--- Chunk {i} (source: {source}, relevance: {score:.3f}) ---\n"
-            f"{doc}\n"
+            f"{row['content']}\n"
         )
     context_block = "\n".join(context_parts)
 
@@ -431,17 +409,17 @@ def local_rag_query(
 
     # Build source list
     sources = []
-    for doc, meta, dist in zip(documents, metadatas, distances):
+    for row in rows:
         sources.append({
-            "score": round(1.0 - dist, 3),
-            "source_file": meta.get("source_file", meta.get("source", "unknown")),
-            "text_preview": doc[:200] + ("..." if len(doc) > 200 else ""),
+            "score": round(float(row.get("similarity", 0.0)), 3),
+            "source_file": row.get("source_file", "unknown"),
+            "text_preview": row["content"][:200] + ("..." if len(row["content"]) > 200 else ""),
         })
 
     return {
         "answer": answer,
         "sources": sources,
-        "chunks_used": len(documents),
+        "chunks_used": len(rows),
     }
 
 
@@ -456,10 +434,7 @@ def main():
     log.info("LM Studio URL : %s", LM_STUDIO_BASE_URL)
     log.info("Chat model    : %s", CHAT_MODEL)
     log.info("Embed model   : %s", EMBEDDING_MODEL)
-    if CHROMADB_MODE == "http":
-        log.info("ChromaDB      : http://%s:%d (%s)", CHROMADB_HOST, CHROMADB_PORT, CHROMADB_COLLECTION)
-    else:
-        log.info("ChromaDB      : %s (%s)", CHROMADB_PATH, CHROMADB_COLLECTION)
+    log.info("pgvector DSN  : %s", PG_DSN)
     mcp.run(transport="stdio")
 
 
