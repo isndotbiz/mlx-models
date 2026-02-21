@@ -20,8 +20,7 @@
       "env": {
         "LM_STUDIO_BASE_URL": "http://localhost:1234",
         "LM_STUDIO_CHAT_MODEL": "josiefied-qwen3-14b-abliterated-v3",
-        "CHROMADB_PATH": "/Users/jonathanmallinger/workspace/rag-system/chroma_data",
-        "CHROMADB_COLLECTION": "security_corpus"
+        "PG_DSN": "postgresql://localhost/rag_db"
       }
     }
   }

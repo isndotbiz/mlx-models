@@ -19,16 +19,17 @@ Working directory for LM Studio model configs, MCP servers, and retrieval script
 - **Server**: `mcp-local-agent/server.py` (delegates tasks to local models)
 - **Tools**: local_analyze, local_summarize, local_research, local_embed, local_rag_query
 - **Config**: `.mcp.json` routes to LM Studio (port 1234, 14B model)
-- **RAG**: local_rag_query uses ChromaDB directly (1,447 docs, security_corpus collection)
-- **Venv**: `mcp-local-agent/.venv/` (python3.14, mcp, httpx, chromadb)
+- **RAG**: local_rag_query uses pgvector (PostgreSQL) — `PG_DSN=postgresql://localhost/rag_db`
+- **Venv**: `mcp-local-agent/.venv/` (python3.12, mcp, httpx, psycopg2-binary, pgvector)
 
 ## RAG System
 - **Location**: ~/workspace/rag-system/ (separated, own GitHub repo: isndotbiz/rag-system)
-- **Storage**: ChromaDB at ~/workspace/rag-system/chroma_data/ (1,447 docs, security_corpus collection)
-- **Ingestion**: `ingest_security_corpus.py` (use python3.12, NOT python3.14 due to pydantic v1 issue)
-- **Query**: `query_rag.py --mode chromadb --collection-name security_corpus`
+- **Storage**: pgvector — PostgreSQL `rag_db` database, `security_corpus` table (768-dim, ivfflat index)
+- **Ingestion**: `ingest_security_corpus.py --pg-dsn postgresql://localhost/rag_db` (venv python3.12)
+- **Query**: `query_rag.py "your query"` (uses $PG_DSN or postgresql://localhost/rag_db by default)
 - **Source data**: `corpus_output.jsonl` (3.4 MB, 1,447 chunks from 137 security research files)
-- **MCP integration**: mcp-local-agent/server.py reads ChromaDB directly for RAG queries
+- **MCP integration**: mcp-local-agent/server.py queries pgvector directly for RAG queries
+- **PostgreSQL**: brew postgresql@17, running on :5432 (brew services start postgresql@17)
 
 ## MLX Server (mlx-server/) - ARCHIVED
 - Was used to serve 30B MoE models that LM Studio couldn't detect (qwen3_moe arch not supported)
@@ -46,7 +47,6 @@ Working directory for LM Studio model configs, MCP servers, and retrieval script
 - GitHub MCP: available but disabled at user level
 
 ## Future Upgrades Identified
-- LanceDB over ChromaDB (native hybrid search, zero config, better performance)
-- mcp-local-rag by shinpr (MCP RAG server with LanceDB)
 - cc_token_saver_mcp (additional Claude-to-local delegation)
 - Qwen3-Embedding-0.6B (alternative to nomic, 44K tok/s on MLX)
+- Add hybrid BM25+vector search via pg_trgm or a full-text tsvector column
