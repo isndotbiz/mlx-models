@@ -34,10 +34,13 @@ EMBEDDING_MODEL = os.environ.get(
     "LM_STUDIO_EMBEDDING_MODEL",
     "nomic-embed-text-v2-moe",
 )
+CHROMADB_MODE = os.environ.get("CHROMADB_MODE", "local")  # "local" or "http"
 CHROMADB_PATH = os.environ.get(
     "CHROMADB_PATH",
     "/Users/jonathanmallinger/workspace/rag-system/chroma_data",
 )
+CHROMADB_HOST = os.environ.get("CHROMADB_HOST", "localhost")
+CHROMADB_PORT = int(os.environ.get("CHROMADB_PORT", "8001"))
 CHROMADB_COLLECTION = os.environ.get(
     "CHROMADB_COLLECTION",
     "security_corpus",
@@ -146,13 +149,29 @@ _chroma_collection = None
 
 
 def _get_collection():
-    """Get or create the ChromaDB collection (lazy init)."""
+    """Get or create the ChromaDB collection (lazy init).
+
+    Supports two modes via CHROMADB_MODE env var:
+    - "local"  (default): PersistentClient reading from CHROMADB_PATH on disk.
+    - "http": HttpClient connecting to a remote chroma server at
+              CHROMADB_HOST:CHROMADB_PORT (e.g. Xeon running
+              ``chroma run --path /mnt/pmem/workspace/chroma_data --port 8001``).
+    """
     global _chroma_collection
     if _chroma_collection is not None:
         return _chroma_collection
 
-    log.info("Connecting to ChromaDB at %s ...", CHROMADB_PATH)
-    client = chromadb.PersistentClient(path=CHROMADB_PATH)
+    if CHROMADB_MODE == "http":
+        log.info(
+            "Connecting to ChromaDB HTTP server at %s:%d ...",
+            CHROMADB_HOST,
+            CHROMADB_PORT,
+        )
+        client = chromadb.HttpClient(host=CHROMADB_HOST, port=CHROMADB_PORT)
+    else:
+        log.info("Connecting to ChromaDB at %s ...", CHROMADB_PATH)
+        client = chromadb.PersistentClient(path=CHROMADB_PATH)
+
     _chroma_collection = client.get_collection(CHROMADB_COLLECTION)
     log.info(
         "Loaded collection '%s' with %d documents.",
@@ -181,19 +200,7 @@ mcp = FastMCP(
 
 @mcp.tool()
 def local_analyze(file_path: str, prompt: str, max_tokens: int = DEFAULT_MAX_TOKENS) -> str:
-    """
-    Read a file from disk and send it along with a prompt to the local LLM
-    for analysis. Useful for code review, bug hunting, documentation
-    generation, or any per-file analysis task.
-
-    Args:
-        file_path: Absolute path to the file to analyze.
-        prompt: Instructions for the analysis (e.g. "Find bugs in this code").
-        max_tokens: Maximum tokens for the response (default 4096).
-
-    Returns:
-        The local LLM's analysis of the file.
-    """
+    """Read a file and analyze it with the local LLM. Use for code review, bug hunting, or documentation tasks."""
     path = Path(file_path).expanduser().resolve()
     if not path.exists():
         return f"Error: File not found: {path}"
@@ -249,19 +256,7 @@ def local_summarize(
     style: str = "concise",
     max_tokens: int = DEFAULT_MAX_TOKENS,
 ) -> str:
-    """
-    Summarize text content using the local LLM. Supports different styles:
-    concise (bullet points), detailed (paragraph), or technical (preserves
-    jargon and specifics).
-
-    Args:
-        content: The text to summarize.
-        style: One of "concise", "detailed", or "technical" (default "concise").
-        max_tokens: Maximum tokens for the response (default 4096).
-
-    Returns:
-        A summary of the provided content.
-    """
+    """Summarize text with the local LLM. style: "concise" (bullets), "detailed" (paragraphs), or "technical"."""
     style_instructions = {
         "concise": (
             "Provide a concise summary using bullet points. "
@@ -311,18 +306,7 @@ def local_research(
     context: str = "",
     max_tokens: int = DEFAULT_MAX_TOKENS,
 ) -> str:
-    """
-    Ask the local LLM a research question. It answers from its training
-    knowledge. Optionally provide context to ground the response.
-
-    Args:
-        question: The research question to answer.
-        context: Optional additional context or constraints for the answer.
-        max_tokens: Maximum tokens for the response (default 4096).
-
-    Returns:
-        The local LLM's answer to the research question.
-    """
+    """Answer a research question using the local LLM's training knowledge. Provide context to ground the response."""
     user_content = question
     if context:
         user_content = f"**Context**:\n{context}\n\n**Question**: {question}"
@@ -351,16 +335,7 @@ def local_research(
 
 @mcp.tool()
 def local_embed(text: str | list[str]) -> dict:
-    """
-    Generate embeddings for one or more texts via the local embedding model
-    (nomic-embed-text-v2-moe, 768-dim).
-
-    Args:
-        text: A single string or a list of strings to embed.
-
-    Returns:
-        A dict with "embeddings" (list of float vectors) and "dimensions".
-    """
+    """Generate 768-dim embeddings via nomic-embed-text-v2-moe. Returns {"embeddings", "dimensions", "count", "model"}."""
     if isinstance(text, str):
         texts = [text]
     else:
@@ -393,25 +368,18 @@ def local_rag_query(
     top_k: int = RAG_TOP_K,
     max_tokens: int = DEFAULT_MAX_TOKENS,
 ) -> dict:
-    """
-    Query the local RAG system. Uses ChromaDB to retrieve the top-k most
-    similar chunks, then sends those chunks and the question to the local
-    LLM for a grounded answer.
+    """Query ChromaDB RAG (security-research corpus, 1447 docs) and answer with grounded LLM response. Returns {"answer", "sources", "chunks_used"}."""
+    # Step 1: Embed the question via LM Studio (same model used at ingest time)
+    try:
+        query_embedding = _get_embeddings([question])[0]
+    except (ConnectionError, TimeoutError, RuntimeError) as exc:
+        return {"error": f"Embedding failed: {exc}"}
 
-    Args:
-        question: The question to answer using RAG.
-        top_k: Number of similar chunks to retrieve (default 8).
-        max_tokens: Maximum tokens for the LLM response (default 4096).
-
-    Returns:
-        A dict with "answer", "sources" (retrieved chunks with scores),
-        and "chunks_used".
-    """
-    # Step 1: Query ChromaDB (it handles embedding internally)
+    # Step 2: Query ChromaDB with the pre-computed embedding vector
     try:
         collection = _get_collection()
         results = collection.query(
-            query_texts=[question],
+            query_embeddings=[query_embedding],
             n_results=top_k,
         )
     except Exception as exc:
@@ -424,7 +392,7 @@ def local_rag_query(
     metadatas = results["metadatas"][0] if results["metadatas"] else [{}] * len(documents)
     distances = results["distances"][0] if results["distances"] else [0.0] * len(documents)
 
-    # Step 2: Build context from retrieved chunks
+    # Step 3: Build context from retrieved chunks
     context_parts = []
     for i, (doc, meta, dist) in enumerate(zip(documents, metadatas, distances), 1):
         source = meta.get("source_file", meta.get("source", "unknown"))
@@ -435,7 +403,7 @@ def local_rag_query(
         )
     context_block = "\n".join(context_parts)
 
-    # Step 3: Send to LLM for grounded answer
+    # Step 4: Send to LLM for grounded answer
     messages = [
         {
             "role": "system",
@@ -488,7 +456,10 @@ def main():
     log.info("LM Studio URL : %s", LM_STUDIO_BASE_URL)
     log.info("Chat model    : %s", CHAT_MODEL)
     log.info("Embed model   : %s", EMBEDDING_MODEL)
-    log.info("ChromaDB      : %s (%s)", CHROMADB_PATH, CHROMADB_COLLECTION)
+    if CHROMADB_MODE == "http":
+        log.info("ChromaDB      : http://%s:%d (%s)", CHROMADB_HOST, CHROMADB_PORT, CHROMADB_COLLECTION)
+    else:
+        log.info("ChromaDB      : %s (%s)", CHROMADB_PATH, CHROMADB_COLLECTION)
     mcp.run(transport="stdio")
 
 
